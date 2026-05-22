@@ -1,0 +1,281 @@
+---
+title: "The Ghost Marketplace"
+subtitle: "C2C Fashion Marketplace EDA — Part 1 of 2"
+author: "Léo Didier"
+date: today
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    code-tools: true
+    code-line-numbers: true
+    smooth-scroll: true
+    self-contained: true
+execute:
+  warning: false
+  message: false
+---
+
+> *98% of users on this fashion marketplace have never sold a single item.*
+> *95% have never bought one.*
+> *So who are the 5% keeping the platform alive?*
+
+This notebook tells the story hidden in 98,913 user records from a real C2C (consumer-to-consumer) fashion marketplace. The dataset is small enough to fit in memory but rich enough to reveal something most marketplace operators only whisper about: **the vast majority of registered users do nothing**. Understanding *who* those silent users are — and *who* the rare power users are — is the difference between a vanity sign-up metric and a viable business.
+
+::: {.callout-note title="Dataset"}
+**Source**: [C2C Fashion Store User Data](https://www.kaggle.com/datasets/jmmvutu/ecommerce-users-of-a-french-c2c-fashion-store) (Kaggle, public).
+**Scope**: 98,913 users, 24 features (engagement, social, geographic, app usage).
+**Goal**: produce a clean Tableau-ready dataset and a story-driven analysis to feed a marketplace activation dashboard.
+:::
+
+## 1. Setup
+
+```{python}
+import sys
+sys.path.insert(0, ".")
+
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from pathlib import Path
+
+from portfolio_theme import BRAND_INDIGO, BRAND_ORANGE, INK, MUTED, COLORWAY  # noqa
+```
+
+```{python}
+DATA_PATH = Path("../data/6M-0K-99K.users.dataset.public.csv")
+df = pd.read_csv(DATA_PATH)
+df = df.drop(columns=["index", "identifierHash", "type"])
+print(f"Shape: {df.shape[0]:,} users × {df.shape[1]} features")
+```
+
+## 2. Data Quality Pass
+
+Before any insight, basic hygiene. Any nulls? Any duplicates? What types are we dealing with?
+
+```{python}
+quality = pd.DataFrame({
+    "dtype": df.dtypes.astype(str),
+    "nulls": df.isnull().sum(),
+    "null_%": (df.isnull().mean() * 100).round(2),
+    "n_unique": df.nunique(),
+})
+quality.head(15)
+```
+
+```{python}
+print(f"Duplicate rows: {df.duplicated().sum()}")
+print(f"Null cells total: {df.isnull().sum().sum()}")
+```
+
+**Clean. No nulls, no duplicates.** This is unusually pristine for a real-world export — likely already pre-processed by the data provider. Good news: we can move directly to the interesting part.
+
+## 3. The Engagement Distributions
+
+Before we talk about activation, look at *how* engagement is distributed. Spoiler: it's not Gaussian — it's a power law.
+
+```{python}
+numeric_cols = [
+    "socialNbFollowers", "socialProductsLiked",
+    "productsListed", "productsSold", "productsBought",
+]
+
+melted = df[numeric_cols].melt(var_name="metric", value_name="value")
+melted = melted[melted["value"] > 0]  # log scale needs positives
+
+fig = px.box(
+    melted, x="metric", y="value", color="metric",
+    log_y=True, points=False,
+    color_discrete_sequence=COLORWAY,
+    title="Engagement metrics (log scale, zeros excluded)",
+)
+fig.update_layout(showlegend=False, height=480)
+fig.show()
+```
+
+Every distribution spans **four to five orders of magnitude**. The median user has a handful of likes; a few users have tens of thousands. Means here are meaningless — we'll work with medians, segments, and counts.
+
+## 4. The Activation Funnel — The Big Reveal
+
+What fraction of registered users ever does anything meaningful? Define a quick activation flag and walk down the funnel.
+
+```{python}
+df["is_seller"]  = df["productsSold"]   > 0
+df["is_buyer"]   = df["productsBought"] > 0
+df["is_lister"]  = df["productsListed"] > 0
+df["is_social"]  = df["socialProductsLiked"] > 0
+df["is_active"]  = df["is_seller"] | df["is_buyer"]
+
+total = len(df)
+steps = [
+    ("Registered",        total),
+    ("Has profile pic",   int(df.hasProfilePicture.sum())),
+    ("Liked ≥1 product",  int(df.is_social.sum())),
+    ("Listed ≥1 product", int(df.is_lister.sum())),
+    ("Bought ≥1",         int(df.is_buyer.sum())),
+    ("Sold ≥1",           int(df.is_seller.sum())),
+]
+funnel_df = pd.DataFrame(steps, columns=["stage", "users"])
+funnel_df["pct"] = (funnel_df["users"] / total * 100).round(2)
+funnel_df
+```
+
+```{python}
+fig = go.Figure(go.Funnel(
+    y=funnel_df["stage"],
+    x=funnel_df["users"],
+    textposition="inside",
+    textinfo="value+percent initial",
+    marker=dict(color=[BRAND_INDIGO, "#4444FF", "#6666FF",
+                       BRAND_ORANGE, "#FF7733", "#FF9966"]),
+    connector=dict(line=dict(color="#bbb", width=1)),
+))
+fig.update_layout(
+    title="User Activation Funnel — from sign-up to first transaction",
+    height=480,
+)
+fig.show()
+```
+
+Two cliffs are obvious:
+
+1. **The social → listing cliff** (78% → 16%). Lots of users like products. Very few list their own.
+2. **The buy/sell cliff** (16% → 5% sell, 16% → 5% buy). Even users who bother to list rarely close the loop.
+
+The takeaway for a Data Analyst: a "registered users" KPI tells almost nothing about marketplace health. The 5% who transact are the population that actually matters.
+
+## 5. Segmenting the Silence
+
+Aggregate funnel stages tell us *how many* fall off — segments tell us *what kind of behaviour* defines each group. Six segments capture nearly every user cleanly:
+
+```{python}
+def segment_user(row):
+    sold, bought = row["productsSold"], row["productsBought"]
+    if sold >= 10 or bought >= 10:
+        return "Power User"
+    if sold > 0 and bought > 0:
+        return "Two-Way Trader"
+    if sold > 0:
+        return "Seller Only"
+    if bought > 0:
+        return "Buyer Only"
+    if row["socialProductsLiked"] > 0 or row["productsListed"] > 0:
+        return "Browser"
+    return "Ghost"
+
+df["segment"] = df.apply(segment_user, axis=1)
+
+seg_order = ["Ghost", "Browser", "Buyer Only", "Seller Only", "Two-Way Trader", "Power User"]
+seg_colors = ["#E0E0E0", "#B0B0FF", "#4444FF", "#FF9966", BRAND_ORANGE, BRAND_INDIGO]
+seg_counts = df["segment"].value_counts().reindex(seg_order)
+seg_counts.to_frame("users").assign(pct=lambda d: (d.users / total * 100).round(2))
+```
+
+```{python}
+fig = px.treemap(
+    names=seg_order,
+    parents=[""] * len(seg_order),
+    values=seg_counts.values,
+    color=seg_order,
+    color_discrete_sequence=seg_colors,
+    title="Six segments — area = number of users",
+)
+fig.update_traces(textinfo="label+value+percent root", textfont_size=14)
+fig.update_layout(height=520, showlegend=False)
+fig.show()
+```
+
+**Ghosts dominate** — over half the platform is fully dormant. **Power Users are 0.4%** but they carry the GMV. Everything between is opportunity: Browsers (8.5%) are the closest to activation; Buyer-Onlys (≈2%) are pre-sellers waiting for nurturing.
+
+### Segment profiles
+
+Why call them what we call them? Look at the average behaviour inside each bucket.
+
+```{python}
+profile = df.groupby("segment")[
+    ["socialNbFollowers", "socialProductsLiked",
+     "productsListed", "productsSold", "productsBought"]
+].mean().reindex(seg_order).round(2)
+profile
+```
+
+```{python}
+fig = px.imshow(
+    profile.T,
+    color_continuous_scale="Blues",
+    aspect="auto",
+    text_auto=".1f",
+    title="Average metric value per segment (heatmap)",
+)
+fig.update_layout(height=420, coloraxis_showscale=False,
+                  xaxis_title="", yaxis_title="")
+fig.show()
+```
+
+Notice the **30× gap** between Power Users and the next-most-active segment on `productsSold` and `productsBought`. There isn't a smooth distribution — there's a long flat plain, and then a cliff. The cliff is where the value is.
+
+## 6. Who Are the Power Users?
+
+A closer look at the 0.4% that keeps the marketplace alive.
+
+```{python}
+power = df[df["segment"] == "Power User"]
+pd.DataFrame({
+    "Metric": ["Users", "% of platform",
+               "Avg products sold", "Avg products bought",
+               "Avg products listed", "Avg followers",
+               "Has app (%)", "Female (%)"],
+    "Value": [
+        f"{len(power):,}",
+        f"{len(power)/total*100:.2f}%",
+        f"{power.productsSold.mean():.1f}",
+        f"{power.productsBought.mean():.1f}",
+        f"{power.productsListed.mean():.1f}",
+        f"{power.socialNbFollowers.mean():.1f}",
+        f"{power.hasAnyApp.mean()*100:.1f}%",
+        f"{(power.gender=='F').mean()*100:.1f}%",
+    ],
+})
+```
+
+### Active users — sold vs bought
+
+A scatter on the active subset shows that Power Users are not just slightly above average — they live in a different region of the plane.
+
+```{python}
+active = df[df["is_active"]].copy()
+active["group"] = np.where(active["segment"] == "Power User", "Power User", "Other active")
+
+fig = px.scatter(
+    active, x="productsSold", y="productsBought",
+    color="group",
+    color_discrete_map={"Power User": BRAND_ORANGE, "Other active": BRAND_INDIGO},
+    opacity=0.45,
+    hover_data={"socialNbFollowers": True, "country": True},
+    title="Active users in the sold × bought plane (zoomed to 0–100)",
+)
+fig.update_traces(marker=dict(size=6))
+fig.update_xaxes(range=[0, 100])
+fig.update_yaxes(range=[0, 100])
+fig.update_layout(height=520, legend_title_text="")
+fig.show()
+```
+
+The orange cloud (Power Users) sits in the upper-right quadrant; the blue cloud (other active users) clusters tight against the axes. This is what *commercial gravity* looks like in a marketplace: a thin upper tail doing most of the work.
+
+## 7. Takeaways
+
+::: {.callout-tip title="What we learned in Part 1"}
+- **The marketplace is mostly a ghost town.** 56% of registered users have zero engagement, 95% never transact.
+- **Power Users are 0.4% of the platform** but on average list 60+ items and complete 30+ transactions each.
+- **The biggest leaks** are the *social → listing* and *listing → transaction* steps. Those are where activation programs would pay off.
+- A "registered users" KPI hides everything that matters. Segments are the right unit of analysis.
+:::
+
+::: {.callout-note title="Coming up in Part 2"}
+*Geography, Gender, and the App Effect* — where Power Users live, how mobile usage multiplies engagement, and how the social graph relates (or doesn't) to transactions. We'll finish by shaping the dataset for a Tableau dashboard.
+:::

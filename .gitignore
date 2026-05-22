@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual envs
+.venv/
+venv/
+portfolio/.venv/
+
+# Quarto build artifacts
+*.quarto_ipynb
+.quarto/
+portfolio/_freeze/
+
+# OS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/

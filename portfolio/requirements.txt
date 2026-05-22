@@ -1,0 +1,8 @@
+jupyter
+plotly
+pandas
+numpy
+kaleido
+scipy
+nbformat
+nbclient
