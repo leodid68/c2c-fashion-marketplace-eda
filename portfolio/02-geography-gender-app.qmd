@@ -1,6 +1,6 @@
 ---
 title: "Geography, Gender & the App Effect"
-subtitle: "C2C Fashion Marketplace EDA — Part 2 of 2"
+subtitle: "C2C Fashion Marketplace EDA: Part 2 of 2"
 author: "Léo Didier"
 date: today
 format:
@@ -18,9 +18,9 @@ execute:
   message: false
 ---
 
-> *Power Users are 0.4% of the platform. Where do they live, what phone do they use, and what colour is their profile?*
+> *Power Users are 0.56% of the platform. Where do they live, what phone do they use, and what colour is their profile?*
 
-In [Part 1](01-the-ghost-marketplace.html) we discovered the marketplace is dominated by ghosts and held up by a thin power-user tail. Now we ask the harder question: **what makes someone activate?** We look at three lenses — geography, gender, and app adoption — and finish by exporting a clean, Tableau-ready dataset.
+In [Part 1](01-the-ghost-marketplace.html) we discovered the marketplace is dominated by ghosts and held up by a thin power-user tail. Now we ask the more difficult question: **what makes someone activate?** We look at three lenses: geography, gender, and app adoption, and finish by exporting a clean, Tableau-ready dataset.
 
 ## 1. Setup & segment recreation
 
@@ -58,7 +58,7 @@ total = len(df)
 print(f"Loaded {total:,} users.")
 ```
 
-## 2. Geography — A French Marketplace That Activates Better Abroad
+## 2. Geography: A French Marketplace That Activates Better Abroad
 
 The user base concentrates in a handful of countries.
 
@@ -138,7 +138,7 @@ fig = px.bar(
     color_continuous_scale=[[0, "#B0B0FF"], [1, BRAND_ORANGE]],
     text=country_stats.sort_values("activation_rate")["activation_rate"]
          .apply(lambda v: f"{v*100:.1f}%"),
-    title="Activation rate — sorted (the lever isn't where the users are)",
+    title="Activation rate, sorted (the lever is not where the users are)",
 )
 fig.update_traces(textposition="outside")
 fig.update_layout(height=520, coloraxis_showscale=False,
@@ -147,11 +147,11 @@ fig.update_layout(height=520, coloraxis_showscale=False,
 fig.show()
 ```
 
-**The insight that flips the obvious strategy:** France, the biggest market by users, has one of the *lowest* activation rates. Smaller Nordic and Central European markets convert much better. A growth team optimizing GMV — not signups — should be allocating effort outside the home market.
+**The finding that reverses the obvious strategy:** France, the biggest market by users, sits only mid-table on activation (around 7%), well below the strongest European markets such as the Netherlands, Germany, Finland and the UK. A growth team that optimizes for GMV, and not for signups, should put its effort outside the home market.
 
-## 3. Gender — A Fashion Marketplace, but Not Symmetric
+## 3. Gender: A Fashion Marketplace, but Not Symmetric
 
-Three quarters of users are women. That alone is unsurprising for fashion. What matters is whether men and women *behave* the same way once on the platform.
+Three quarters of users are women. This alone is not surprising for fashion. What matters is whether men and women *behave* the same way once on the platform.
 
 ```{python}
 gender_stats = df.groupby("gender").agg(
@@ -189,11 +189,11 @@ fig.update_layout(
 fig.show()
 ```
 
-Women skew slightly more toward Browser / Buyer-Only behaviour; men are slightly over-represented among Power Users. The differences are real but modest — gender is not the strongest activation lever. Geography and app adoption are.
+Women skew slightly more toward Browser / Buyer-Only behaviour; men are slightly over-represented among Power Users. The differences are real but small: gender is not the strongest activation lever. Geography and app adoption are.
 
-## 4. The App Effect — Mobile Is the Activation Multiplier
+## 4. The App Effect: Mobile Is the Activation Multiplier
 
-If we had to ship a single intervention to lift activation, it would be: **get users on the app.**
+If we had to ship only one intervention to lift activation, it would be this: **get users on the app.**
 
 ```{python}
 df["hasAnyAppBool"] = df["hasAnyApp"].astype(bool)
@@ -218,21 +218,21 @@ ratios = [(h / n) if n > 0 else None for h, n in zip(has_app, no_app)]
 
 fig = go.Figure(go.Bar(
     x=labels, y=ratios,
-    text=[f"{r:.1f}×" if r else "—" for r in ratios],
+    text=[f"{r:.1f}×" if r else "n/a" for r in ratios],
     textposition="outside",
     marker_color=BRAND_ORANGE,
 ))
 fig.add_hline(y=1, line_dash="dash", line_color="gray",
               annotation_text="parity with non-app users", annotation_position="top left")
 fig.update_layout(
-    title="App users vs non-app users — ratio of average metric",
+    title="App users vs non-app users: ratio of average metric",
     yaxis_title="Has-App / No-App ratio",
     height=460,
 )
 fig.show()
 ```
 
-App users transact **roughly 8× more on average** than web-only users. That ratio survives controlling for country and gender (not shown — but the breakdown is in the appendix dataset). Whether the app *causes* the engagement or self-selects for engaged users, the dashboard signal is the same: *app adoption is the single best behavioural correlate of marketplace value*.
+App users transact **roughly 8× more on average** than web-only users (measured on products sold; the gap on products bought is closer to 3×). This ratio holds even after controlling for country and gender (not shown, but the breakdown is in the appendix dataset). Whether the app *causes* the engagement or just attracts already engaged users, the signal for the dashboard is the same: *app adoption is the single best behavioural correlate of marketplace value*.
 
 ### iOS vs Android
 
@@ -251,11 +251,11 @@ platform_df = pd.DataFrame(platform_rows)
 platform_df.round(3)
 ```
 
-iOS users outnumber Android users **roughly 4 to 1** on this platform — a striking imbalance that probably says more about the early adopter profile of this French marketplace than about phone economics.
+iOS users outnumber Android users **roughly 4 to 1** on this platform, a strong imbalance that probably says more about the early-adopter profile of this French marketplace than about phone economics.
 
 ## 5. Social ≠ Transactional
 
-A natural intuition: power users have huge follower counts; influence drives sales. Does the data support it?
+A natural intuition would be this: power users have huge follower counts, and influence drives sales. Does the data confirm it?
 
 ```{python}
 corr_cols = ["socialNbFollowers", "socialNbFollows", "socialProductsLiked",
@@ -265,21 +265,21 @@ corr = df[corr_cols].corr().round(2)
 fig = px.imshow(
     corr, text_auto=True, aspect="auto",
     color_continuous_scale="RdBu_r", zmin=-1, zmax=1,
-    title="Correlation matrix — social vs transactional",
+    title="Correlation matrix: social vs transactional",
 )
 fig.update_layout(height=520, coloraxis_showscale=True)
 fig.show()
 ```
 
-The social block (top-left 3×3) correlates with itself. The transactional block (bottom-right 4×4) correlates with itself. The **cross-block correlations are near zero**. Followers do not predict sales. Liking products does not predict buying them. The two engagement modes are **decoupled** — a useful finding when designing dashboards (don't mix them on the same KPI tile) and when designing growth experiments (don't expect social features to drive transactions).
+The social block (top-left 3×3) and the transactional block (bottom-right 4×4) each correlate mostly with themselves. Across the two blocks, most links are weak: liking products barely predicts buying them (r≈0.06), and following others barely predicts selling. The one clear exception is **followers versus products sold (r≈0.63)**, but that link almost certainly runs the other way: active sellers accumulate followers rather than followers creating sellers. So as a *driver*, social activity and transactional activity are largely **decoupled**, a useful finding when designing dashboards (do not mix them on the same KPI tile) and when designing growth experiments (do not expect social features to drive transactions).
 
 ## 6. The Tableau-Ready Export
 
-Final step — turn this analysis into a clean dataset for the dashboard layer. Three concrete decisions made here:
+Final step: turn this analysis into a clean dataset for the dashboard layer. Three concrete decisions here:
 
-1. **English country names** so Tableau's built-in geo recognition works.
-2. **`segment` and `is_active`** columns baked in so the dashboard doesn't reinvent them.
-3. **`activity_level`** (Inactive / Low / Medium / High) so filters can offer a friendlier choice than raw counts.
+1. **English country names**, so that Tableau can use its built-in geo recognition.
+2. **`segment` and `is_active`** columns baked in so that the dashboard does not have to recreate them.
+3. **`activity_level`** (Inactive / Low / Medium / High) so that filters can offer a more friendly option than raw counts.
 
 ```{python}
 def activity_level(row):
@@ -309,7 +309,7 @@ fig = px.sunburst(
         "Inactive": "#E0E0E0", "Low": "#B0B0FF",
         "Medium": BRAND_INDIGO, "High": BRAND_ORANGE,
     },
-    title="The shape of the export — activity level → segment",
+    title="The shape of the export: activity level → segment",
 )
 fig.update_layout(height=540)
 fig.show()
@@ -318,13 +318,13 @@ fig.show()
 ## 7. Final takeaways
 
 ::: {.callout-tip title="What we learned across the two notebooks"}
-- **The marketplace runs on a thin power-user tail.** 0.4% of users do the bulk of transactions.
-- **France is the biggest market but converts poorly.** Smaller European markets activate better — a clear growth lever.
+- **The marketplace runs on a thin power-user tail.** 0.56% of users do the bulk of transactions.
+- **France is the biggest market but activates below the leaders.** Smaller European markets convert better: a clear growth lever.
 - **Gender shifts behaviour modestly**; app adoption shifts it dramatically.
-- **App users transact ~8× more than web-only users** — the single strongest behavioural correlate of activation.
-- **Social engagement and transactional engagement are decoupled** — design dashboards accordingly.
+- **App users transact ~8× more than web-only users** (products sold): the strongest behavioural correlate of activation.
+- **Social and transactional engagement are largely decoupled** (the one real link, followers and sales, runs sale → follower), so design dashboards accordingly.
 :::
 
 ::: {.callout-note title="Deliverable"}
-A Tableau-ready CSV at `outputs/c2c_fashion_tableau.csv` with **98,913 rows × 28 columns**, including the derived `segment`, `is_active`, `activity_level`, and English country names. The dashboard built on top of it tells the activation story end-to-end: who registers, who lingers, who transacts, and where the leverage points are.
+A Tableau-ready CSV at `outputs/c2c_fashion_tableau.csv` with **98,913 rows × 29 columns**, including the derived `segment`, `is_active`, `activity_level`, and English country names. The dashboard built on top of it tells the activation story from end to end: who registers, who lingers, who transacts, and where the leverage points are.
 :::
